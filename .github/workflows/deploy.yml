@@ -1,15 +1,24 @@
-# Publikacja builda (dist/) na GitHub Pages po każdym pushu do main — także po nocnym
-# snapshocie, bo snapshot-bot wypycha commit kluczem wdrożeniowym, co wyzwala zwykłe
-# zdarzenie `push`. Wymaga ustawienia w repozytorium: Settings → Pages → Source: "GitHub Actions".
+# Publikacja builda (dist/) na GitHub Pages po każdym pushu do main oraz po nocnym snapshocie
+# (wyzwalacz workflow_run). Commit snapshot-bota — choć wypychany kluczem wdrożeniowym — NIE
+# wyzwala zdarzenia `push` (sprawdzone 26.09.2026: commit 61c7f1e nie uruchomił żadnego
+# workflow i strona przez dwa dni serwowała stary snapshot). Po snapshocie publikacja rusza
+# tylko wtedy, gdy bot faktycznie coś wypchnął (czubek main różni się od commitu, na którym
+# eksport wystartował). Wymaga ustawienia: Settings → Pages → Source: "GitHub Actions".
 #
-# Publikowany jest DOKŁADNIE commit zdarzenia (github.sha), który przeszedł kontrolę w tym
-# samym przebiegu (job `check` → `build` → `deploy`); nieudane testy lub walidacja danych
-# blokują publikację. Uprawnienia pages/id-token ma tylko job wdrożenia.
+# Publikowany jest DOKŁADNIE ten commit, który przeszedł kontrolę w tym samym przebiegu
+# (job `check` → `build` → `deploy`): github.sha — dla push/dispatch commit zdarzenia, po
+# snapshocie czubek main.
+# Nieudane testy lub walidacja danych blokują publikację. Uprawnienia pages/id-token ma tylko
+# job wdrożenia.
 
 name: Publikacja na GitHub Pages
 
 on:
   push:
+    branches: [main]
+  workflow_run:
+    workflows: ['Snapshot danych z bazy']
+    types: [completed]
     branches: [main]
   workflow_dispatch: {}
 
@@ -22,6 +31,13 @@ concurrency:
 
 jobs:
   check:
+    # Po snapshocie tylko wtedy, gdy eksport się udał i bot coś wypchnął (github.sha to czubek
+    # main, workflow_run.head_sha — commit, na którym eksport wystartował). Gdy nic się nie
+    # zmieniło, cały przebieg jest pomijany i nie uruchamia E2E.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_sha != github.sha)
     runs-on: ubuntu-latest
     timeout-minutes: 8
     outputs:
@@ -29,6 +45,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # push/dispatch: commit zdarzenia; workflow_run: czubek main (commit snapshot-bota).
           ref: ${{ github.sha }}
           persist-credentials: false
       - name: Ustal publikowany commit

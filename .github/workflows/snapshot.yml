@@ -8,8 +8,9 @@
 # w Settings → Deploy keys z prawem zapisu), a nie tokenem Actions:
 #  - gałąź main jest chroniona regułą; w liście obejść (bypass) jest „Deploy keys”,
 #    więc bot może zapisać snapshot, a nikt inny nie ominie reguły;
-#  - push kluczem wyzwala zdarzenie `push`, więc deploy.yml publikuje stronę zwykłą drogą
-#    (push tokenem GITHUB_TOKEN nie wyzwala innych workflowów).
+#  - push kluczem NIE wyzwala zdarzenia `push` (tak samo jak push tokenem GITHUB_TOKEN;
+#    potwierdzone 26.09.2026), dlatego stronę po snapshocie publikuje deploy.yml
+#    wyzwalaczem workflow_run — tylko gdy bot faktycznie coś wypchnął.
 # Bez sekretu SNAPSHOT_DEPLOY_KEY checkout używa tokenu Actions — tylko dlatego token ma
 # contents: write; przy ustawionym kluczu wystarczy contents: read.
 
