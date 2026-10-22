@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Ikona aplikacji (źródło). PNG w public/ikony/ generuje tools/pwa/ikony.mjs. -->
+  <defs>
+    <linearGradient id="tlo" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1565c0"/>
+      <stop offset="1" stop-color="#0d3b66"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#tlo)"/>
+  <!-- fale -->
+  <g fill="none" stroke="#ffffff" stroke-width="22" stroke-linecap="round" opacity="0.9">
+    <path d="M40 330 C 100 290, 140 370, 200 330 S 300 290, 360 330 S 440 370, 472 330"/>
+    <path d="M40 410 C 100 370, 140 450, 200 410 S 300 370, 360 410 S 440 450, 472 410" opacity="0.55"/>
+  </g>
+  <!-- spławik -->
+  <g transform="translate(300 120) rotate(14)">
+    <rect x="-8" y="-100" width="16" height="92" rx="8" fill="#ffffff"/>
+    <ellipse cx="0" cy="40" rx="30" ry="56" fill="#e53935"/>
+    <ellipse cx="0" cy="20" rx="30" ry="36" fill="#ffffff"/>
+    <ellipse cx="0" cy="52" rx="30" ry="44" fill="#e53935"/>
+    <rect x="-7" y="92" width="14" height="60" rx="7" fill="#263238"/>
+  </g>
+</svg>

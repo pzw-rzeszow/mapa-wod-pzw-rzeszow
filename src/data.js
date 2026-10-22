@@ -112,10 +112,4 @@ export function signOut() {
   }).catch(() => {});
 }
 
-/** Escapowanie tekstu przed wstawieniem do HTML (treść oraz atrybuty w cudzysłowie lub apostrofie). */
-export function esc(value) {
-  return (value == null ? '' : String(value)).replace(
-    /[&<>"']/g,
-    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]
-  );
-}
+export { esc } from './esc.js';

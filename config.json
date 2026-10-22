@@ -170,6 +170,11 @@
       { "id": "geo", "nazwa": "Inna aplikacja", "url": "geo:{lat},{lon}?q={lat},{lon}({name})", "tylkoAndroid": true }
     ]
   },
+  "pogoda": {
+    "url": "https://api.open-meteo.com/v1/forecast",
+    "waznoscMin": 30,
+    "_opis": "Pogoda nad wodą w okienku łowiska: bieżące warunki z Open-Meteo (bez klucza, CC BY 4.0 — podpis źródła w okienku). Zapytanie dotyczy współrzędnych łowiska, nie użytkownika. Pusty url wyłącza funkcję (bez przebudowy CSP nowy host nie zadziała — origin trafia do connect-src w vite.config.js). waznoscMin = jak długo strona pamięta odpowiedź dla jednego łowiska."
+  },
   "healthcheck": {
     "coMinut": 10,
     "alarmPoNieudanych": 3,

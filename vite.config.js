@@ -18,7 +18,13 @@ function contentSecurityPolicy() {
     'img-src': ["'self'", 'data:', 'blob:', ...tiles],
     // Kafle także w connect-src: service worker pobiera je przez fetch(), a Firefox
     // stosuje do niego CSP strony (bez tego każdy kafel kończy się błędem 503 z SW).
-    'connect-src': ["'self'", origin(config.supabase.url), ...tiles],
+    // Pogoda nad wodą (src/pogoda.js) — tylko gdy pogoda.url jest ustawiony.
+    'connect-src': [
+      "'self'",
+      origin(config.supabase.url),
+      ...tiles,
+      ...(config.pogoda && config.pogoda.url ? [origin(config.pogoda.url)] : []),
+    ],
     'font-src': ["'self'"],
     'object-src': ["'none'"],
     'base-uri': ["'self'"],

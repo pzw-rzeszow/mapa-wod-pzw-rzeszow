@@ -13,8 +13,12 @@ Na mapie są:
 - wyszukiwarka (działa też bez polskich znaków), filtry warstw, a pod „Więcej filtrów” rodzaj zbiornika
   (zaporowe / wyrobiska pożwirowe / stawy / inne), „tylko NO-KILL” i obwód rybacki; lista boczna
   (na telefonie wysuwany panel nad mapą na cały ekran), legenda symboli,
-  „Najbliżej mnie” (bieżące położenie, sortowanie wg odległości), „Nawiguj” (Google Maps / Apple Maps /
-  Waze, wybór zapamiętany) i „Udostępnij” (link do łowiska: `…/#w=<id>`),
+  „Najbliżej mnie” (bieżące położenie, sortowanie wg odległości, filtr „W promieniu” 10/25/50 km),
+  „Nawiguj” (Google Maps / Apple Maps / Waze, wybór zapamiętany) i „Udostępnij” (link do łowiska: `…/#w=<id>`),
+- **ulubione** (★ przy nazwie na liście i w okienku; filtr „★ Ulubione”; zapamiętane w przeglądarce),
+- w okienku łowiska **współrzędne** (z kopiowaniem), długość odcinka rzeki i **pogoda nad wodą**
+  (bieżące warunki z Open-Meteo: temperatura, wiatr, ciśnienie z tendencją, opady, wschód i zachód słońca),
+- instalacja jako **aplikacja** na telefonie i komputerze (PWA: `manifest.webmanifest`, przycisk „📲 Zainstaluj”),
 - trzy podkłady GUGiK: mapa ogólna, mapa topograficzna, ortofotomapa,
 - **wykaz do druku** (`wykaz.html`) — tabele zbiorników, rzek i granic ze współrzędnymi; „Pobierz PDF” zapisuje A4.
 
@@ -35,11 +39,14 @@ Projekt powstał z inicjatywy autora i jest rozwijany we współpracy z Okręgie
 | Podkłady i geometrie | usługi WMTS Geoportalu (EPSG:2180) oraz przebiegi rzek i kontury zbiorników z BDOT10k (GUGiK) |
 | Cache kafli | Cloudflare Worker + R2 (`cloudflare/kafle/`) między przeglądarką a Geoportalem; włączany polem `basemaps.kafleUrl` w `config.json` (puste = kafle prosto z Geoportalu) |
 | Pamięć podręczna | service worker `public/sw.js`: obejrzane kafle i pliki strony są dostępne także przy słabym zasięgu i bez sieci |
+| Pogoda nad wodą | [Open-Meteo](https://open-meteo.com/) (bez klucza, CC BY 4.0); zapytanie o współrzędne łowiska, odpowiedź pamiętana w stronie przez `pogoda.waznoscMin`; pusty `pogoda.url` w `config.json` wyłącza funkcję |
+| Aplikacja (PWA) | `public/manifest.webmanifest` i ikony `public/ikony/` (źródło: `tools/pwa/ikona.svg`); przycisk „📲 Zainstaluj” w menu (`src/instalacja.js`), na iPhonie instrukcja „Do ekranu początkowego” |
 | Panel operatora | `admin.html` — logowanie e-mail + hasło + TOTP, edycja pinezek, przebiegów rzek i atrybutów; każda zmiana trafia do `historia_zmian` |
 | Zgłoszenia błędów | formularz na mapie → funkcja Supabase `zglos-blad` → issue w tym repozytorium (bez konta GitHub) |
 
-W czasie działania strona łączy się wyłącznie z Geoportalem GUGiK, cache kafli (Cloudflare Worker) i własnym
-projektem Supabase (baza i funkcja zgłoszeń) — wymusza to CSP generowane w buildzie z `config.json` (`vite.config.js`).
+W czasie działania strona łączy się wyłącznie z Geoportalem GUGiK, cache kafli (Cloudflare Worker), własnym
+projektem Supabase (baza i funkcja zgłoszeń) i serwisem pogodowym Open-Meteo — wymusza to CSP generowane
+w buildzie z `config.json` (`vite.config.js`). Ulubione i wybór aplikacji do nawigacji zostają w przeglądarce.
 
 Szczegóły (kafle i praca offline, zgłoszenia, bezpieczeństwo, monitoring) są w
 [wiki projektu](https://github.com/pzw-rzeszow/mapa-wod-pzw-rzeszow/wiki).
@@ -77,6 +84,7 @@ Po przejściu na własną domenę ustaw `site.basePath` i `site.url` w `config.j
 | `src/` | logika stron, warstwa danych, układ współrzędnych i podkłady, filtry, formularz zgłoszeń |
 | `public/data.json` | snapshot bazy (odświeżany co noc); format: [wiki → Przepływ danych](https://github.com/pzw-rzeszow/mapa-wod-pzw-rzeszow/wiki/Przeplyw-danych) |
 | `public/sw.js` | service worker (kopiowany do `dist/` bez hasha) |
+| `public/manifest.webmanifest`, `public/ikony/` | manifest aplikacji (PWA) i ikony; źródło ikon i generator: `tools/pwa/` |
 | `public/kandydaci-zbiorniki.json` | propozycje akwenów z BDOT10k dla zbiorników o lokalizacji przybliżonej (panel) |
 | `config.json` | cała konfiguracja (patrz niżej) |
 | `supabase/migrations/` | schemat bazy i wszystkie zmiany, w kolejności znaczników czasu |
@@ -88,6 +96,7 @@ Po przejściu na własną domenę ustaw `site.basePath` i `site.url` w `config.j
 | `tools/bdot/` | pipeline geometrii z BDOT10k — [opis](tools/bdot/README.md) |
 | `tools/qa/` | porównanie danych z oficjalnym wykazem PZW (PDF, OCR) — [opis](tools/qa/README.md) |
 | `tools/triage/` | klasyfikacja zgłoszeń przez model (prompt, etykiety, komentarz) |
+| `tools/pwa/` | ikona aplikacji (SVG) i skrypt generujący PNG do `public/ikony/` |
 | `tests/e2e/` | testy E2E (Playwright) |
 | `docs/instrukcja-operatora.md` | instrukcja obsługi panelu dla operatora Okręgu |
 | `SECURITY.md` | prywatna ścieżka zgłaszania luk bezpieczeństwa |
@@ -102,6 +111,7 @@ Po przejściu na własną domenę ustaw `site.basePath` i `site.url` w `config.j
 | `map` | środek i poziomy zoomu, zasięg przesuwania, układ współrzędnych i siatka kafli |
 | `basemaps` | adres usługi WMTS, adres cache kafli (`kafleUrl`), warstwy podkładów, podkład domyślny, komunikat awaryjny |
 | `links` | linki zewnętrzne, szablony nawigacji, nazwa funkcji zgłoszeń i zapasowy formularz issue |
+| `pogoda` | adres Open-Meteo (`url`; pusty = pogoda wyłączona) i czas pamiętania odpowiedzi (`waznoscMin`) |
 | `healthcheck` | częstotliwość kontroli, próg alarmu, osoby przypisywane do alarmu |
 
 Klucz `anonKey` jest z założenia jawny (trafia do przeglądarki); o bezpieczeństwie zapisu decydują reguły RLS

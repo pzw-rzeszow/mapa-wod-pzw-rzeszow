@@ -1,0 +1,27 @@
+{
+  "name": "Mapa wód PZW — Okręg Rzeszów",
+  "short_name": "Wody PZW",
+  "description": "Interaktywna mapa łowisk PZW Okręgu w Rzeszowie: zbiorniki, odcinki rzek, granice obwodów, zasady połowu.",
+  "lang": "pl",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f4efe6",
+  "theme_color": "#0d3b66",
+  "categories": ["navigation", "sports", "travel"],
+  "icons": [
+    { "src": "ikony/ikona-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "ikony/ikona-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "ikony/ikona-maskowalna-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "Wykaz wód (PDF)",
+      "short_name": "Wykaz",
+      "description": "Tabele zbiorników, rzek i granic ze współrzędnymi",
+      "url": "./wykaz.html",
+      "icons": [{ "src": "ikony/ikona-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

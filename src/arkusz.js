@@ -8,7 +8,7 @@ export const MOBILE = '(max-width: 720px)';
 /**
  * @param {HTMLElement} panel element #side
  * @param {HTMLElement} uchwyt uchwyt przeciągania (pierwsze dziecko panelu)
- * @returns {{ ustaw(stan: string): void, stan(): string, mobile(): boolean, wysokosc(): number }}
+ * @returns {{ ustaw(stan: string): void, stan(): string, mobile(): boolean, wysokosc(): number, wysokoscStanu(stan: string): number }}
  */
 export function initArkusz(panel, uchwyt) {
   const mq = window.matchMedia(MOBILE);
@@ -70,8 +70,10 @@ export function initArkusz(panel, uchwyt) {
   });
 
   ustaw('peek');
+  /** Wysokość panelu w podanym stanie (px); 0 na komputerze. */
+  const wysokoscStanu = (s) => (mq.matches ? wysokosci()[STANY.indexOf(s)] : 0);
   /** Docelowa wysokość panelu w bieżącym stanie (bez czekania na koniec animacji); 0 na komputerze. */
-  const wysokosc = () => (mq.matches ? wysokosci()[STANY.indexOf(stan)] : 0);
+  const wysokosc = () => wysokoscStanu(stan);
 
-  return { ustaw, stan: () => stan, mobile: () => mq.matches, wysokosc };
+  return { ustaw, stan: () => stan, mobile: () => mq.matches, wysokosc, wysokoscStanu };
 }
