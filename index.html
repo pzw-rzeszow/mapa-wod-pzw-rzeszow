@@ -2,7 +2,12 @@
 <html lang="pl">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Interaktywna mapa łowisk PZW Okręgu w Rzeszowie: zbiorniki, odcinki rzek, granice obwodów, zasady połowu, nawigacja i pogoda nad wodą.">
+<meta name="theme-color" content="#0d3b66">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="ikony/ikona-192.png" type="image/png">
+<link rel="apple-touch-icon" href="ikony/apple-touch-icon.png">
 <title>Mapa wód PZW Okręg Rzeszów 2026</title>
 <style>
 :root{--blue:#1565c0;--green:#2e7d32;--bg:#fff;}
@@ -35,6 +40,22 @@ header small{opacity:.75}
 .chip[data-f="niz"].on{background:#0288d1}
 .chip[data-f="gor"].on{background:var(--green)}
 .chip[data-f="gr"].on{background:#616161}
+.chip[data-ulubione]{color:#8d6e00;border-color:#e0c15a;font-family:inherit}
+.chip[data-ulubione].on{background:#f9a825;color:#fff}
+.chip[data-km].on{background:#0d3b66}
+#promien-row[hidden]{display:none}
+.gw{background:none;border:none;cursor:pointer;font-size:17px;line-height:1;padding:0 4px;color:#9e9e9e;vertical-align:-1px}
+.gw.on{color:#f9a825}
+.gw:hover{color:#f9a825}
+.item .gw{float:right;margin:-3px -4px 0 4px;font-size:19px}
+.pusto{padding:14px 12px;font-size:13px;color:#555;line-height:1.5}
+.leaflet-popup-content>.gw{float:right;margin:-2px 10px 0 6px;font-size:19px}
+.leaflet-popup-content .wsp{margin-top:6px;font-size:11.5px;color:#555}
+.leaflet-popup-content .pogoda{margin-top:8px;padding:6px 8px;border-radius:8px;background:#eef5fb;font-size:12px;line-height:1.5}
+.leaflet-popup-content .pogoda b{font-size:12px}
+.leaflet-popup-content .pogoda a{white-space:nowrap}
+.leaflet-popup-content .pogoda-slot{margin-top:6px;font-size:11.5px}
+#installbtn[hidden]{display:none}
 #list{flex:1;overflow-y:auto;padding:6px}
 .item{padding:8px 10px;border-radius:8px;cursor:pointer;border-bottom:1px solid #eee}
 .item:hover{background:#e8f1fa}
@@ -113,6 +134,9 @@ header small{opacity:.75}
  #map .leaflet-bottom{bottom:138px}
  #komunikat{bottom:152px}
  .popup-otwarty .leaflet-top{display:none}
+ /* Popup wyższy niż miejsce nad panelem przewija się w całości (zamiast tylko „Zasady”). */
+ .leaflet-popup-content{max-height:calc(100vh - 240px);max-height:calc(100dvh - 240px);overflow-y:auto;overscroll-behavior:contain}
+ .leaflet-popup-content .rules{max-height:none;overflow:visible}
  #filters>.chips{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin:0 -10px;padding:0 10px}
  #filters>.chips::-webkit-scrollbar{display:none}
  #filters>.chips .chip{flex:none;white-space:nowrap}
@@ -128,6 +152,7 @@ header small{opacity:.75}
   <a data-link="wykazPzw" href="#" target="_blank" rel="noopener noreferrer" class="wykaz">📄 Wykaz źródłowy (PZW)</a>
   <a href="wykaz.html" class="ramka">📋 Wykaz PDF</a>
   <button type="button" id="infobtn" class="ramka">ℹ️ O mapie</button>
+  <button type="button" id="installbtn" class="ramka" hidden>📲 Zainstaluj</button>
   <a href="admin.html" class="operator">🔑 Operator</a>
  </nav>
 </header>
@@ -141,7 +166,11 @@ header small{opacity:.75}
     <span class="chip on" data-f="niz">Rzeki nizinne</span>
     <span class="chip on" data-f="gor">Kraina pstrąga</span>
     <span class="chip" data-f="gr">Granice obwodów</span>
+    <button type="button" class="chip" id="ulubionebtn" data-ulubione aria-pressed="false">★ Ulubione</button>
     <button type="button" class="chip more" id="morebtn" aria-expanded="false" aria-controls="more">Więcej filtrów ▾</button>
+   </div>
+   <div class="frow" id="promien-row" hidden><span class="flabel">W promieniu:</span>
+    <div class="chips" id="promien"></div>
    </div>
    <div id="more" hidden>
     <div class="frow"><span class="flabel">Zbiorniki:</span>
@@ -163,6 +192,8 @@ header small{opacity:.75}
 <h2>O tej mapie <button type="button" class="close" data-close aria-label="Zamknij">×</button></h2>
 <p><b>Źródło danych o łowiskach:</b> „Wykaz wód PZW Okręgu w Rzeszowie udostępnionych do wędkowania" — oficjalna książeczka Okręgu PZW Rzeszów na rok 2026 (<a data-link="wykazPzw" href="#" target="_blank" rel="noopener noreferrer">otwórz wykaz na stronie PZW</a>).</p>
 <p style="margin-top:8px"><b>Podkład i geometrie:</b> Główny Urząd Geodezji i Kartografii — mapa topograficzna i ortofotomapa (usługi WMTS Geoportalu) oraz Baza Danych Obiektów Topograficznych BDOT10k (przebiegi rzek i kontury zbiorników); dane z państwowego zasobu geodezyjnego, bezpłatne do ponownego wykorzystania. Lokalizacje części zbiorników są przybliżone (oznaczone ⚠), a granice obwodów na rzekach wyznaczono orientacyjnie.</p>
+<p style="margin-top:8px"><b>Pogoda nad wodą:</b> bieżące warunki w okienku łowiska pochodzą z serwisu <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Open-Meteo</a> (licencja CC BY 4.0); zapytanie dotyczy współrzędnych łowiska, nie Twojego położenia. To prognoza — nad wodą bywa inaczej.</p>
+<p style="margin-top:8px"><b>Ulubione (★)</b> i wybór aplikacji do nawigacji są zapamiętane tylko w tej przeglądarce — nic nie jest wysyłane na serwer. Mapę można zainstalować jako aplikację (przycisk <b>📲 Zainstaluj</b> w menu, gdy przeglądarka to umożliwia).</p>
 <p style="margin-top:8px;color:#b26a00"><b>Uwaga:</b> mapa ma charakter poglądowy. Przed wędkowaniem zweryfikuj zasady w aktualnym zezwoleniu i wykazie PZW.</p>
 <p style="margin-top:8px"><b>Zauważyłeś(-aś) błąd na mapie albo brakuje łowiska?</b> <a href="#" data-report="">Zgłoś uwagę</a> — krótki formularz, nie wymaga konta. Projekt jest otwarty: <a data-link="repo" href="#" target="_blank" rel="noopener noreferrer">kod i dane</a> są publiczne.</p>
 <p id="stan-danych" style="margin-top:8px;color:#888;font-size:12px">Dane odświeżane co noc z bazy Okręgu.</p>

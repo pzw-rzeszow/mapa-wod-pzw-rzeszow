@@ -20,7 +20,7 @@
     "e2e:przegladarki": "playwright install chromium firefox webkit",
     "e2e:raport": "playwright show-report",
     "wiki:sprawdz": "node tools/wiki/sprawdz.mjs",
-    "check": "node --check vite.config.js && for f in tools/snapshot/*.mjs tools/triage/*.mjs cloudflare/kafle/*.js; do node --check \"$f\" || exit 1; done && npm run validate && npm test"
+    "check": "node --check vite.config.js && for f in tools/snapshot/*.mjs tools/triage/*.mjs tools/pwa/*.mjs cloudflare/kafle/*.js; do node --check \"$f\" || exit 1; done && npm run validate && npm test"
   },
   "dependencies": {
     "@geoman-io/leaflet-geoman-free": "^2.18.3",

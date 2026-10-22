@@ -1,23 +1,37 @@
 /* Mapa publiczna (index.html). */
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import { BASEMAPS, LINKS, SITE } from './config.js';
+import { BASEMAPS, LINKS, SITE, POGODA } from './config.js';
 import { crs, ZOOM, CENTER, maxBounds, MAX_BOUNDS_VISCOSITY } from './crs.js';
 import { initBasemaps } from './basemaps.js';
 import { loadSnapshot, loadFromSupabase, polaczDane, getSupabase, esc } from './data.js';
 import { waterOptions, initReportForm } from './report.js';
-import { distanceKm } from './geo.js';
+import { distanceKm, lengthKm, formatLatLon } from './geo.js';
 import { RODZAJE, RODZAJ_NAZWA } from './zbiorniki-typ.js';
-import { createFilters, passesFilters, obwodyList, extraFiltersActive } from './filtry.js';
+import {
+  createFilters,
+  passesFilters,
+  obwodyList,
+  extraFiltersActive,
+  resetExtraFilters,
+  PROMIENIE_KM,
+} from './filtry.js';
 import { nadajId, idZHasha, hashDlaId } from './link.js';
 import { adresNawigacji, aplikacjeNaUrzadzeniu, zapamietana, zapamietaj } from './nawigacja.js';
 import { initArkusz } from './arkusz.js';
 import { dodajLegende, stylZbiornika, komunikat } from './legenda.js';
+import { wczytajUlubione, przelaczUlubione, uporzadkujUlubione, gwiazdka } from './ulubione.js';
+import { utworzPogode, pogodaHtml } from './pogoda.js';
+import { initInstalacja } from './instalacja.js';
 
 const $ = (id) => document.getElementById(id);
 
 const COLORS = { zb: '#1565c0', niz: '#0288d1', gor: '#2e7d32', gr: '#616161' };
 const APLIKACJE = aplikacjeNaUrzadzeniu(LINKS.navigation, navigator.userAgent);
+const POGODA_ZRODLO = 'https://open-meteo.com/';
+/** Ulubione łowiska (gwiazdka) — wspólny zbiór dla listy, popupów i filtra. */
+const ULUBIONE = wczytajUlubione();
+const pogoda = utworzPogode({ url: POGODA.url, waznoscMin: POGODA.waznoscMin });
 
 function applyLinks() {
   document.querySelectorAll('a[data-link]').forEach((a) => {
@@ -76,20 +90,73 @@ function wyborAplikacjiHtml(position, title) {
   );
 }
 
+/** Przycisk gwiazdki (lista i popup); stan czytany z ULUBIONE w chwili rysowania. */
+function gwiazdkaHtml(e) {
+  const on = ULUBIONE.has(e.id);
+  return (
+    `<button type="button" class="gw${on ? ' on' : ''}" data-gw="${esc(e.id)}" aria-pressed="${on}"` +
+    ` title="${on ? 'Usuń z ulubionych' : 'Dodaj do ulubionych'}" aria-label="${on ? 'Usuń z ulubionych' : 'Dodaj do ulubionych'}">${gwiazdka(on)}</button>`
+  );
+}
+
+/** Współrzędne punktu (dla rzeki — środka odcinka) z kopiowaniem do schowka, np. do nawigacji GPS. */
+function wspolrzedneHtml(e) {
+  const [lat, lon] = e.latlng;
+  const wsp = `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+  return (
+    `<div class="wsp">📌 <span>${esc(formatLatLon(e.latlng))}</span>` +
+    ` <a href="#" class="drobny" data-copy="${esc(wsp)}" title="Skopiuj współrzędne">kopiuj</a></div>`
+  );
+}
+
 function popupHtml(e) {
   const { title, tag, tagColor, body, rules, approx, nokill } = e.popup;
-  let html = `<h3>${esc(title)}</h3><span class="tag" style="background:${tagColor}">${esc(tag)}</span>`;
+  // Gwiazdka przed nagłówkiem (float), żeby tekst <h3> był samą nazwą (czytniki ekranu, testy).
+  let html = `${e.f === 'gr' ? '' : gwiazdkaHtml(e)}<h3>${esc(title)}</h3>`;
+  html += `<span class="tag" style="background:${tagColor}">${esc(tag)}</span>`;
   if (nokill) html += '<span class="tag nk">NO-KILL</span>';
   if (approx) html += '<div class="approx">⚠ lokalizacja przybliżona</div>';
   if (body) html += `<div>${esc(body)}</div>`;
   if (rules) html += `<div class="rules"><b>Zasady:</b> ${esc(rules)}</div>`;
+  html += wspolrzedneHtml(e);
   if (e.f === 'gr') return html;
+  if (pogoda.wlaczona) html += `<div class="pogoda-slot" data-pogoda="${esc(e.id)}"></div>`;
   return (
     html +
     `<div class="akcje" data-akcje="${esc(e.id)}">${nawigacjaHtml(e.latlng, title)}` +
     ` · <a href="#" data-share="${esc(e.id)}">🔗 Udostępnij</a>` +
     ` · <a href="#" data-report="${esc(e.reportKey)}">✉️ Zgłoś uwagę</a></div>`
   );
+}
+
+/** Przelicza rozmiar i położenie popupu po zmianie treści i dosuwa mapę, żeby popup był w całości
+ *  widoczny (Leaflet robi to sam tylko przy otwarciu; update() generowałby treść od nowa i gubił stan).
+ *  W trakcie animacji zoomu (fitBounds po wyborze rzeki z listy) dosunięcie zostałoby nadpisane,
+ *  więc jest powtarzane po jej zakończeniu. */
+function odswiezPopup(popup) {
+  const przelicz = () => {
+    if (!popup._map) return;
+    for (const krok of ['_updateLayout', '_updatePosition', '_adjustPan']) {
+      if (typeof popup[krok] === 'function') popup[krok]();
+    }
+  };
+  przelicz();
+  const map = popup._map;
+  if (map && map._animatingZoom) map.once('zoomend', przelicz);
+}
+
+/** Dociąga pogodę do otwartego popupu łowiska; gdy serwis nie odpowie, miejsce po prostu znika. */
+async function wstawPogode(e) {
+  const popup = e.target.getPopup();
+  const slot = popup && popup.getElement() && popup.getElement().querySelector('[data-pogoda]');
+  if (!slot) return;
+  slot.innerHTML = '<span class="drobny">🌤 pogoda nad wodą…</span>';
+  const p = await pogoda.pobierz(e.id, e.latlng);
+  const aktualny = popup.getElement() && popup.getElement().querySelector('[data-pogoda]');
+  if (!aktualny || aktualny !== slot) return;
+  slot.innerHTML = p ? pogodaHtml(p, POGODA_ZRODLO) : '';
+  if (!p) slot.remove();
+  odswiezPopup(popup);
 }
 
 const normalize = (s) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ł/g, 'l');
@@ -100,8 +167,9 @@ function centruj(map, arkusz, latlng, zoom) {
   if (arkusz.mobile()) map.panBy([0, arkusz.wysokosc() / 2], { animate: false });
 }
 
-/** Wpisy (lista + obiekty na mapie) z danych; obiekty trafiają do grup warstw przez filtry. */
-function buildEntries(data, layers) {
+/** Wpisy (lista + obiekty na mapie) z danych; obiekty trafiają do grup warstw przez filtry.
+ *  `dolPx` — wysokość panelu zasłaniającego dół mapy na telefonie: popup jest dosuwany nad niego. */
+function buildEntries(data, layers, dolPx = 0) {
   const entries = [];
 
   data.zb.forEach((z, i) => {
@@ -134,6 +202,7 @@ function buildEntries(data, layers) {
     const kind = r.c === 'gor' ? 'gor' : 'niz';
     const line = L.polyline(r.pts, { color: COLORS[kind], weight: kind === 'gor' ? 3 : 4, opacity: 0.85 });
     const mid = r.pts[Math.floor(r.pts.length / 2)];
+    const dlugoscKm = lengthKm(r.pts);
     let label = r.n;
     if (nameCount[r.n] > 1) {
       nameSeen[r.n] = (nameSeen[r.n] || 0) + 1;
@@ -152,7 +221,11 @@ function buildEntries(data, layers) {
       reportKey: `rzeka:${i}`,
       popup: {
         title: r.n,
-        tag: kind === 'gor' ? 'kraina pstrąga i lipienia' : 'obwód ' + r.o,
+        tag:
+          (kind === 'gor' ? 'kraina pstrąga i lipienia' : 'obwód ' + r.o) +
+          (dlugoscKm >= 0.5
+            ? ` · ok. ${dlugoscKm.toFixed(dlugoscKm < 10 ? 1 : 0).replace('.', ',')} km`
+            : ''),
         tagColor: COLORS[kind],
         body: r.d,
         rules: r.r,
@@ -183,7 +256,8 @@ function buildEntries(data, layers) {
   nadajId(entries);
   // Szerokość popupu dopasowana do wąskich telefonów (np. 320 px), żeby × i treść się mieściły.
   const maxWidth = Math.max(200, Math.min(280, window.innerWidth - 90));
-  for (const e of entries) e.target.bindPopup(() => popupHtml(e), { maxWidth });
+  const opcje = { maxWidth, autoPanPaddingBottomRight: [5, dolPx + 8] };
+  for (const e of entries) e.target.bindPopup(() => popupHtml(e), opcje);
   return entries;
 }
 
@@ -288,6 +362,7 @@ function initLokalizacja(map, arkusz, onPozycja) {
 
 function initUi(map, layers, arkusz) {
   const filters = createFilters();
+  filters.ulubione = ULUBIONE;
   const { active } = filters;
   const listEl = $('list');
   const countEl = $('count');
@@ -298,22 +373,34 @@ function initUi(map, layers, arkusz) {
   let userPos = null;
   let stanDanych = '';
 
+  /** Odległości od użytkownika dla wszystkich wpisów (filtr promienia i sortowanie listy). */
+  function przeliczOdleglosci() {
+    entries.forEach((e) => {
+      e.km = userPos ? distanceKm(userPos, e.latlng) : undefined;
+    });
+  }
+
   function render() {
     const q = normalize(searchEl.value.trim());
     const items = entries.filter(
       (e) => passesFilters(e, filters) && (!q || normalize(e.name + ' ' + e.sub).includes(q))
     );
-    if (userPos) {
-      items.forEach((e) => {
-        e.km = distanceKm(userPos, e.latlng);
-      });
-      items.sort((a, b) => a.km - b.km);
-    }
+    if (userPos) items.sort((a, b) => a.km - b.km);
     countEl.textContent =
       items.length +
       ' pozycji' +
-      (userPos ? ' · posortowano wg odległości' : '') +
+      (filters.tylkoUlubione ? ' · ulubione' : '') +
+      (userPos
+        ? (filters.promienKm ? ` · do ${filters.promienKm} km` : '') + ' · posortowano wg odległości'
+        : '') +
       (stanDanych ? ' · Dane: ' + stanDanych : '');
+    $('ulubionebtn').textContent = `★ Ulubione${ULUBIONE.size ? ` (${ULUBIONE.size})` : ''}`;
+    if (!items.length && filters.tylkoUlubione) {
+      listEl.innerHTML =
+        '<div class="pusto">Brak ulubionych łowisk. Stuknij ☆ przy nazwie łowiska (na liście albo w okienku na mapie), ' +
+        'aby mieć je pod ręką — lista jest zapamiętana w tej przeglądarce.</div>';
+      return;
+    }
     listEl.innerHTML = items
       .map(
         (e) =>
@@ -322,9 +409,30 @@ function initUi(map, layers, arkusz) {
           (e.km !== undefined
             ? ` <span style="color:#0d3b66;font-size:12px">· ${e.km.toFixed(1)} km</span>`
             : '') +
+          (e.f === 'gr' ? '' : gwiazdkaHtml(e)) +
           `<div class="meta">${e.approx ? '≈ położenie przybliżone · ' : ''}${esc(e.sub)}</div></div>`
       )
       .join('');
+  }
+
+  /** Zmiana stanu gwiazdki (lista i popup) — przy filtrze „Ulubione” lista i mapa od razu się odświeżają. */
+  function przelaczGwiazdke(id) {
+    const e = byId.get(id);
+    if (!e) return;
+    const on = przelaczUlubione(ULUBIONE, id);
+    komunikat(
+      on ? `★ ${e.popup.title} — dodano do ulubionych.` : `☆ ${e.popup.title} — usunięto z ulubionych.`,
+      2500
+    );
+    document.querySelectorAll(`[data-gw="${CSS.escape(id)}"]`).forEach((b) => {
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', String(on));
+      b.textContent = gwiazdka(on);
+      b.title = on ? 'Usuń z ulubionych' : 'Dodaj do ulubionych';
+      b.setAttribute('aria-label', b.title);
+    });
+    if (filters.tylkoUlubione) applyFilters();
+    else render();
   }
 
   /** Dodaje do mapy obiekty przechodzące filtry, zdejmuje pozostałe; potem odświeża listę. */
@@ -342,6 +450,7 @@ function initUi(map, layers, arkusz) {
   function pokaz(e) {
     if (!passesFilters(e, filters)) {
       if (!active.has(e.f)) document.querySelector(`.chip[data-f="${e.f}"]`).click();
+      if (filters.tylkoUlubione && !ULUBIONE.has(e.id)) $('ulubionebtn').click();
       if (!passesFilters(e, filters)) $('resetbtn').click();
     }
     if (arkusz.mobile()) arkusz.ustaw('peek');
@@ -361,10 +470,28 @@ function initUi(map, layers, arkusz) {
   }
 
   listEl.addEventListener('click', (ev) => {
+    const gw = ev.target.closest('button[data-gw]');
+    if (gw) {
+      przelaczGwiazdke(gw.dataset.gw);
+      return;
+    }
     const item = ev.target.closest('.item');
     const e = item && byId.get(item.dataset.id);
     if (e) pokaz(e);
   });
+
+  // Gwiazdka w popupie (faza przechwytywania — Leaflet zatrzymuje kliknięcia w popupie).
+  document.addEventListener(
+    'click',
+    (ev) => {
+      const gw = ev.target.closest('.leaflet-popup button[data-gw]');
+      if (!gw) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      przelaczGwiazdke(gw.dataset.gw);
+    },
+    true
+  );
 
   // Adres strony wskazuje otwarte łowisko — można go skopiować albo udostępnić.
   map.on('popupopen', (ev) => {
@@ -372,6 +499,7 @@ function initUi(map, layers, arkusz) {
     if (!e) return;
     if (e.f !== 'gr') history.replaceState(null, '', hashDlaId(e.id));
     if (arkusz.mobile()) arkusz.ustaw('peek');
+    if (e.f !== 'gr' && pogoda.wlaczona) wstawPogode(e);
   });
   // Na telefonie przyciski mapy zasłaniałyby popup — chowane, dopóki popup jest otwarty.
   map.on('popupopen', () => map.getContainer().classList.add('popup-otwarty'));
@@ -421,13 +549,39 @@ function initUi(map, layers, arkusz) {
     applyFilters();
   });
 
+  // „★ Ulubione” — filtr w głównym rzędzie, działa we wszystkich warstwach.
+  $('ulubionebtn').addEventListener('click', (ev) => {
+    filters.tylkoUlubione = !filters.tylkoUlubione;
+    ev.currentTarget.classList.toggle('on', filters.tylkoUlubione);
+    ev.currentTarget.setAttribute('aria-pressed', String(filters.tylkoUlubione));
+    applyFilters();
+  });
+
+  // „W promieniu” — pojawia się po ustaleniu położenia („Najbliżej mnie”).
+  const promienEl = $('promien');
+  promienEl.innerHTML = PROMIENIE_KM.map((km) => `<span class="chip" data-km="${km}">${km} km</span>`).join(
+    ''
+  );
+  function ustawPromien(km) {
+    filters.promienKm = km;
+    promienEl
+      .querySelectorAll('.chip[data-km]')
+      .forEach((c) => c.classList.toggle('on', Number(c.dataset.km) === km));
+  }
+  promienEl.addEventListener('click', (ev) => {
+    const chip = ev.target.closest('.chip[data-km]');
+    if (!chip) return;
+    const km = Number(chip.dataset.km);
+    ustawPromien(filters.promienKm === km ? 0 : km);
+    applyFilters();
+  });
+
   $('resetbtn').addEventListener('click', () => {
-    Object.keys(RODZAJE).forEach((k) => filters.kinds.add(k));
-    filters.nokillOnly = false;
-    filters.obwod = '';
+    resetExtraFilters(filters);
     obwodEl.value = '';
     kindsEl.querySelectorAll('.chip[data-k]').forEach((c) => c.classList.add('on'));
     kindsEl.querySelector('.chip[data-nk]').classList.remove('on');
+    ustawPromien(0);
     applyFilters();
   });
 
@@ -445,8 +599,10 @@ function initUi(map, layers, arkusz) {
 
   initLokalizacja(map, arkusz, (pos) => {
     userPos = pos;
+    przeliczOdleglosci();
+    $('promien-row').hidden = false;
     if (arkusz.mobile() && arkusz.stan() === 'peek') arkusz.ustaw('half');
-    render();
+    applyFilters();
   });
 
   /** Podmienia dane (pierwsze wczytanie albo odświeżenie z bazy) z zachowaniem filtrów i otwartego łowiska.
@@ -455,8 +611,11 @@ function initUi(map, layers, arkusz) {
     const otwarte = idZHasha(location.hash);
     const bylOtwarty = odswiezenie && !!map._popup && map.hasLayer(map._popup);
     Object.values(layers).forEach((g) => g.clearLayers());
-    entries = buildEntries(data, layers);
+    // Na telefonie popup otwiera się nad panelem w stanie „peek” (popupopen go tak ustawia).
+    entries = buildEntries(data, layers, arkusz.mobile() ? arkusz.wysokoscStanu('peek') : 0);
     byId = new Map(entries.map((e) => [e.id, e]));
+    przeliczOdleglosci();
+    uporzadkujUlubione(ULUBIONE, byId);
     const wybrany = obwodEl.value;
     obwodEl.length = 1;
     obwodyList(entries).forEach((o) => obwodEl.appendChild(new Option(o, o)));
@@ -497,11 +656,16 @@ async function udostepnij(e) {
       if (err && err.name === 'AbortError') return;
     }
   }
+  skopiuj(url, 'Link do łowiska skopiowany — wklej go w wiadomości.', 'Link do łowiska: ' + url);
+}
+
+/** Kopia do schowka z komunikatem; bez dostępu do schowka tekst jest pokazywany do przepisania. */
+async function skopiuj(tekst, gotowe, zapas = tekst) {
   try {
-    await navigator.clipboard.writeText(url);
-    komunikat('Link do łowiska skopiowany — wklej go w wiadomości.');
+    await navigator.clipboard.writeText(tekst);
+    komunikat(gotowe);
   } catch {
-    komunikat('Link do łowiska: ' + url, 15000);
+    komunikat(zapas, 15000);
   }
 }
 
@@ -514,6 +678,12 @@ function initAkcjePopupu(ui) {
       const app = ev.target.closest('a[data-app]');
       if (app) {
         zapamietaj(app.dataset.app);
+        return;
+      }
+      const kopiuj = ev.target.closest('a[data-copy]');
+      if (kopiuj) {
+        ev.preventDefault();
+        skopiuj(kopiuj.dataset.copy, 'Współrzędne skopiowane: ' + kopiuj.dataset.copy);
         return;
       }
       const wybor = ev.target.closest('a[data-nav-wybor]');
@@ -529,12 +699,7 @@ function initAkcjePopupu(ui) {
       }
       if (!akcje.nextElementSibling || !akcje.nextElementSibling.classList.contains('nav-wybor')) {
         akcje.insertAdjacentHTML('afterend', wyborAplikacjiHtml(e.latlng, e.popup.title));
-        // Popup urósł w górę — przeliczenie rozmiaru i położenia oraz dopasowanie widoku (Leaflet robi to
-        // sam tylko po ruchu mapy; update() generowałby treść od nowa i gubił wybór).
-        const popup = e.target.getPopup();
-        for (const krok of ['_updateLayout', '_updatePosition', '_adjustPan']) {
-          if (typeof popup[krok] === 'function') popup[krok]();
-        }
+        odswiezPopup(e.target.getPopup()); // popup urósł w górę
       }
     },
     true
@@ -617,6 +782,7 @@ async function main() {
   applyLinks();
   initMenu();
   initInfoModal();
+  initInstalacja($('installbtn'), { komunikat });
   const baza = loadFromSupabase();
   const { map, layers } = initMap();
   const arkusz = initArkusz($('side'), $('uchwyt'));
